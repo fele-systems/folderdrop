@@ -1,0 +1,24 @@
+# Sample configuration
+
+[memes static]
+path=memes
+patterns=*.jpeg, *.jpg, *.png
+tags=#is:image, #from:folderdrop
+collection=memes
+
+# -m 'memes static' -p memes -P '*.jpeg, *.jpg, *.png' -t '#is:image, #from:folderdrop' -c memes
+
+[memes animated]
+path=memes
+patterns=*.mp4, *.mkv, *.gif
+tags=#is:video, #from:folderdrop
+collection=memes
+
+# --mount 'memes animated' --path memes --patterns '*.mp4, *.mkv, *.gif' --tags '#is:video, #from:folderdrop' --collection memes
+
+[homework]
+path=homework
+tags=#hidden
+collection=homework
+
+# -m 'homework' --collection homework --path 'homework' --tags '#hidden'
