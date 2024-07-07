@@ -187,6 +187,8 @@ Mounts load_mount_config(const std::string_view filename)
                 mount->second.tags = parse_css(value);
             else if (option == "collection")
                 mount->second.collection = value;
+            else if (option == "link_prefix")
+                mount->second.link_prefix = value;
             else
                 throw std::runtime_error{ "Unknown option: '" + line + "' defined at line " + std::to_string(line_no) + "." };
         }

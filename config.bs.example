@@ -1,0 +1,44 @@
+# Sample configuration
+# Comments are allowed only when the first character is #!
+
+# Define mounts using square brackets.
+[memes static]
+
+# Directory to scan for files
+path=memes
+
+# Pattern of files to filter (ecmascript). Commas will always separate patterns
+patterns=.*\.jpeg, .*\.jpg, .*\.png
+
+# Tags to be defined while creating Raindrops
+tags=#is:image, #from:folderdrop
+
+# Name of the collection
+collection=memes
+
+# Each file in this mount will be appended to this url to create a Raindrop link
+link_prefix=https://my-file-server.net/files/
+
+# The command line to genered the same config as above:
+# folderdrop -m 'memes static' -p memes -P '.*\.jpeg, .*\.jpg, .*\.png' -t '#is:image, #from:folderdrop' -c memes --link-prefix https://my-file-server.net/files/
+
+
+[memes animated]
+# You could apply different configuration on the same directory by specifiying different patterns
+path=memes
+patterns=.*\.mp4, .*\.mkv, .*\.gif
+tags=#is:video, #from:folderdrop
+collection=test
+link_prefix=https://my-file-server.net/files/
+
+# folderdrop --mount 'memes animated' --path memes --patterns '.*\.mp4, .*\.mkv, .*\.gif' --tags '#is:video, #from:folderdrop' --collection memes --link-prefix https://my-file-server.net/files/
+
+[homework]
+path=homework
+patterns=.*\.pdf, .*\.docx?
+tags=#hidden
+collection=homework
+link_prefix=https://my-school-server.net/files/
+
+# Short command syntax
+# folderdrop -m 'homework' -c homework -p 'homework' -P '.*\.pdf, .*\.docx?' -t '#hidden' -l https://my-school-server.net/files/
