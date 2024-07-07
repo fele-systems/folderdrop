@@ -65,6 +65,6 @@ Execute the following commands:
 
 ```shell
 mkdir build
-cmake -S build
+cmake . -B build
 cmake --build build
 ```
