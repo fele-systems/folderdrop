@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cctype>
+#include <string_view>
 
 namespace fele
 {
@@ -125,6 +126,17 @@ namespace fele
     {
         return left_trim(right_trim(std::move(input), pred), pred);
     }
+}
+template<typename CharT = char>
+std::basic_string<CharT> operator+(const std::basic_string<CharT>& str, std::basic_string_view<CharT> str_v);
+
+template <typename CharT>
+std::basic_string<CharT> operator+(const std::basic_string<CharT> &str, std::basic_string_view<CharT> str_v)
+{
+    auto s = str;
+    s.reserve(s.size() + str_v.size());
+    std::copy(str_v.begin(), str_v.end(), std::back_inserter(s));
+    return s;
 }
 
 template<char space = ' '>

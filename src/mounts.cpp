@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <string_view>
 
 using namespace std::string_literals;
 
@@ -44,6 +45,16 @@ std::vector<std::string> parse_css(std::string css)
     return vec;
 }
 
+__attribute__((noreturn)) void fail_no_mount_defined(std::string_view option)
+{
+    throw std::runtime_error{ "Trying to define "s + option + " but not mount was defined. Define a mount using -m or --mount before any calls to " + option };
+}
+
+__attribute__((noreturn)) void fail_missing_value(std::string_view option, std::string_view mount)
+{
+    throw std::runtime_error{ "Missing value for "s + option + " while building mount " + mount };
+}
+
 Mounts load_mount_cmd(int argc, char** argv)
 {
     std::vector<std::string> args;
@@ -74,42 +85,43 @@ Mounts load_mount_cmd(int argc, char** argv)
         }
         else if (a == "-p" || a == "--path")
         {
-            if (mount == mounts.end())
-                throw std::runtime_error{ "Trying to define " + a + " but not mount was defined. Define a mount using -m or --mount before any calls to " + a };
-            if (arg + 1 == end)
-                throw std::runtime_error{ "Missing value for " + a + " while building mount " + mount->first };
+            if (mount == mounts.end()) fail_no_mount_defined(a);
+                
+            if (arg + 1 == end) fail_missing_value(a, mount->first);
 
             mount->second.path = *(arg + 1);
             ++arg; // Skip the processed value
         }
         else if (a == "-P" || a == "--patterns")
         {
-            if (mount == mounts.end())
-                throw std::runtime_error{ "Trying to define " + a + " but not mount was defined. Define a mount using -m or --mount before any calls to " + a };
-            if (arg + 1 == end)
-                throw std::runtime_error{ "Missing value for " + a + " while building mount " + mount->first };
+            if (mount == mounts.end()) fail_no_mount_defined(a);
+            if (arg + 1 == end) fail_missing_value(a, mount->first);
 
             mount->second.patterns = parse_css(*(arg + 1));
             ++arg; // Skip the processed value
         }
         else if (a == "-t" || a == "--tags")
         {
-            if (mount == mounts.end())
-                throw std::runtime_error{ "Trying to define " + a + " but not mount was defined. Define a mount using -m or --mount before any calls to " + a };
-            if (arg + 1 == end)
-                throw std::runtime_error{ "Missing value for " + a + " while building mount " + mount->first };
+            if (mount == mounts.end()) fail_no_mount_defined(a);
+            if (arg + 1 == end) fail_missing_value(a, mount->first);
 
             mount->second.tags = parse_css(*(arg + 1));
             ++arg; // Skip the processed value
         }
         else if (a == "-c" || a == "--collection")
         {
-            if (mount == mounts.end())
-                throw std::runtime_error{ "Trying to define " + a + " but not mount was defined. Define a mount using -m or --mount before any calls to " + a };
-            if (arg + 1 == end)
-                throw std::runtime_error{ "Missing value for " + a + " while building mount " + mount->first };
+            if (mount == mounts.end()) fail_no_mount_defined(a);
+            if (arg + 1 == end) fail_missing_value(a, mount->first);
 
             mount->second.collection = *(arg + 1);
+            ++arg; // Skip the processed value
+        }
+        else if (a == "-l" || a == "--link-prefix")
+        {
+            if (mount == mounts.end()) fail_no_mount_defined(a);
+            if (arg + 1 == end) fail_missing_value(a, mount->first);
+
+            mount->second.link_prefix = *(arg + 1);
             ++arg; // Skip the processed value
         }
         else
@@ -127,7 +139,7 @@ Mounts load_mount_config(const std::string_view filename)
 {
     Mounts mounts;
     auto mount = mounts.end();
-    std::ifstream istream{ filename.data() };
+    std::ifstream istream{ std::string{filename} };
     int line_no = 0;
 
     if (!istream.is_open())

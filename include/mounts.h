@@ -11,6 +11,7 @@ struct Mount
     std::optional<std::vector<std::string>> tags;
     std::optional<std::vector<std::string>> patterns;
     std::optional<std::string> collection;
+    std::optional<std::string> link_prefix;
 };
 
 using Mounts = std::unordered_map<std::string, Mount>;
