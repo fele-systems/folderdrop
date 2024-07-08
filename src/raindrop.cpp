@@ -104,7 +104,7 @@ bool get_raindrops(const RaindropAccount &radindropio, uint64_t id, std::vector<
     auto fetched_records = perpage * page + items.size();
     auto total_records = j["count"].get<int>();
 
-    result = items;
+    result = std::move(items);
 
-    return !items.empty() && fetched_records < total_records;
+    return !result.empty() && fetched_records < total_records;
 }
