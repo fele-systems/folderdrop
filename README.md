@@ -61,6 +61,12 @@ IIRC when building on Ubuntu, you'll need to install the following packages:
 apt install libssl-dev nlohmann-json3-dev libcurl4-openssl-dev
 ```
 
+If coming from a clean install (with no development tools) install also:
+
+```
+apt install pkg-config g++ cmake
+```
+
 Execute the following commands:
 
 ```shell
