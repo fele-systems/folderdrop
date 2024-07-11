@@ -116,7 +116,7 @@ std::optional<nlohmann::json> find_collection_in_response(nlohmann::json &respon
 
 bool get_raindrops(const RaindropAccount &radindropio, uint64_t id, std::vector<nlohmann::json>& result, int page, int perpage)
 {
-    auto r = cpr::Get(cpr::Url{RaindropAccount::base_url + "/rest/v1/raindrops/" + std::to_string(id)},
+    auto r = cpr::Get(cpr::Url{RaindropAccount::base_url + "/rest/v1/raindrops/" + std::to_string(id) + "?perpage=" + std::to_string(perpage) + "&page=" + std::to_string(page)},
         cpr::Bearer{ radindropio.token },
         cpr::Header{{ "Content-Type", "application/json" }},
         cpr::Header{{ "Accept", "application/json" }});

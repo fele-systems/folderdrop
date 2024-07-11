@@ -64,6 +64,7 @@ int main(int argc, char* argv[])
 
 std::vector<Raindrop> get_raindrops(const RaindropAccount &raindropio, uint64_t collection_id)
 {
+    const auto perpage = 100;
     std::vector<Raindrop> vec;
     int current_page = 0;
     std::vector<nlohmann::json> out_raindrops;
@@ -74,18 +75,17 @@ std::vector<Raindrop> get_raindrops(const RaindropAccount &raindropio, uint64_t 
         
         return {link, id};
     };
-    auto has_more = get_raindrops(raindropio, collection_id, out_raindrops, current_page, 5);
+    auto has_more = get_raindrops(raindropio, collection_id, out_raindrops, current_page, perpage);
     ++current_page;
 
     std::transform(out_raindrops.begin(), out_raindrops.end(), std::back_inserter(vec), mapper);
 
     while (has_more)
     {
-        has_more = get_raindrops(raindropio, collection_id, out_raindrops, current_page, 5);
+        has_more = get_raindrops(raindropio, collection_id, out_raindrops, current_page, perpage);
+        std::transform(out_raindrops.begin(), out_raindrops.end(), std::back_inserter(vec), mapper);
         ++current_page;
     }
-
-    std::transform(out_raindrops.begin(), out_raindrops.end(), std::back_inserter(vec), mapper);
 
     return vec;
 }
