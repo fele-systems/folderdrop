@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <mounts.h>
 #include <regex>
+#include <raindrop_queue.h>
 
 using Raindrop = std::pair<std::string, uint64_t>;
 
@@ -26,7 +27,9 @@ std::vector<Raindrop> get_raindrops(
 
 Mounts load_mounts(int argc, char** argv);
 
-int execute_mount(const Mount& mount, const RaindropAccount& account);
+int execute_mount(const Mount &mount, const RaindropAccount &account);
+
+void log_created_raindrops(const nlohmann::json &r);
 
 void append_to_url(std::string& url, std::string_view append);
 
@@ -147,12 +150,16 @@ int execute_mount(const Mount &mount, const RaindropAccount& account)
     const auto link_prefix = *mount.link_prefix;
     const auto path = *mount.path;
     const auto tags = mount.tags.value_or(std::vector<std::string>{});
+
+    RaindropQueue queue { account, collection_id, tags };
+
     std::vector<std::regex> patterns;
     // Compile regexes
     for (const auto& pattern : *mount.patterns)
     {
         patterns.emplace_back(pattern, std::regex::ECMAScript);
     }
+
     // Get currently existing raindrops
     const std::vector<Raindrop> raindrops_cache = get_raindrops(account, collection_id);
 
@@ -192,13 +199,8 @@ int execute_mount(const Mount &mount, const RaindropAccount& account)
 
         if (existing_rd == raindrops_cache.end())
         {
-            const auto rd = create_raindrop(account, RaindropBuilder{ link }
-                .set_tags(tags)
-                .set_collection(collection_id)
-                .set_title(file)
-                .get_json());    
-            const auto rd_id = rd["item"]["_id"].get<uint64_t>();
-            std::cout << "[INFO] " << file << " -> created raindrop: " << rd_id << std::endl;
+            if (auto r = queue.append(RaindropBuilder{ link }.set_title(file)); r.has_value())
+                log_created_raindrops(*r);
         }
         else
         {
@@ -206,8 +208,22 @@ int execute_mount(const Mount &mount, const RaindropAccount& account)
         }
     }
 
+    if (auto r = queue.offload(); r.has_value())
+        log_created_raindrops(*r);
+
 
     return 0;
+}
+
+void log_created_raindrops(const nlohmann::json &r)
+{
+    std::cout << "[INFO] Created raindrops:\n";
+    for (const auto &item : r["items"])
+    {
+        const auto id = item["_id"].get<uint64_t>();
+        std::cout << "\t- " << std::to_string(id) << '\n';
+    }
+    std::cout.flush();
 }
 
 void append_to_url(std::string &url, std::string_view append)

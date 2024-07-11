@@ -19,9 +19,11 @@ class RaindropBuilder
 public:
     explicit RaindropBuilder(const std::string& url);
     RaindropBuilder& set_tags(std::vector<std::string> tags);
+    RaindropBuilder& append_tag(const std::string& tag);
     RaindropBuilder& set_title(std::string title);
     RaindropBuilder& set_collection(uint64_t id);
-    nlohmann::json get_json() const;
+    const nlohmann::json& get_json() const;
+    nlohmann::json& get_json();
 private:
     nlohmann::json body;
 };
@@ -30,7 +32,13 @@ private:
 /// @param raindropio The raindrop account
 /// @param request Body of the raindrop
 /// @return The response JSON
-nlohmann::json create_raindrop(const RaindropAccount& raindropio, nlohmann::json request);
+nlohmann::json create_raindrop(const RaindropAccount& raindropio, const nlohmann::json& request);
+
+/// @brief Creates several raindrops
+/// @param raindropio The raindrop account
+/// @param request Body of the request
+/// @return The response JSON
+nlohmann::json create_raindrops(const RaindropAccount& raindropio, const nlohmann::json& request);
 
 /// @brief Searches for a collection in the raindrop account
 /// @param raindrop The raindrop account

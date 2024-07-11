@@ -17,6 +17,13 @@ RaindropBuilder &RaindropBuilder::set_tags(std::vector<std::string> tags)
     return *this;
 }
 
+RaindropBuilder &RaindropBuilder::append_tag(const std::string& tag)
+{
+    body["tags"].push_back(tag);
+
+    return *this;
+}
+
 RaindropBuilder &RaindropBuilder::set_title(std::string title)
 {
     body["title"] = std::move(title);
@@ -34,12 +41,17 @@ RaindropBuilder &RaindropBuilder::set_collection(uint64_t id)
     return *this;
 }
 
-nlohmann::json RaindropBuilder::get_json() const
+const nlohmann::json& RaindropBuilder::get_json() const
 {
     return body;
 }
 
-nlohmann::json create_raindrop(const RaindropAccount &raindropio, nlohmann::json request)
+nlohmann::json &RaindropBuilder::get_json()
+{
+    return body;
+}
+
+nlohmann::json create_raindrop(const RaindropAccount &raindropio, const nlohmann::json& request)
 {
     auto r = cpr::Post(cpr::Url{ RaindropAccount::base_url + "/rest/v1/raindrop/" },
         cpr::Bearer{ raindropio.token },
@@ -50,6 +62,22 @@ nlohmann::json create_raindrop(const RaindropAccount &raindropio, nlohmann::json
     if (r.status_code != 200)
     {
         throw std::runtime_error{ "Error creating a raindrop: " + r.text };
+    }
+
+    return nlohmann::json::parse(r.text);
+}
+
+nlohmann::json create_raindrops(const RaindropAccount &raindropio, const nlohmann::json& request)
+{
+    auto r = cpr::Post(cpr::Url{ RaindropAccount::base_url + "/rest/v1/raindrops/" },
+        cpr::Bearer{ raindropio.token },
+        cpr::Header{{ "Content-Type", "application/json" }},
+        cpr::Header{{ "Accept", "application/json" }},
+        cpr::Body{request.dump()});
+
+    if (r.status_code != 200)
+    {
+        throw std::runtime_error{ "Error creating multiple raindrops: " + r.text };
     }
 
     return nlohmann::json::parse(r.text);
