@@ -16,7 +16,7 @@ FetchContent_MakeAvailable(cpr)
 
 # Main
 add_executable("${PROJECT_NAME}"
-            src/main.cpp src/raindrop.cpp src/mounts.cpp src/raindrop_queue.cpp)
+            src/main.cpp src/raindrop.cpp src/mounts.cpp src/raindrop_queue.cpp src/app.cpp)
 
 target_compile_features("${PROJECT_NAME}" PRIVATE cxx_std_17)
 
