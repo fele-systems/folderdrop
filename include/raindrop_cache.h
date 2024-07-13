@@ -36,6 +36,7 @@ public:
         std::vector<Entry> entries;
     };
     Result<Entry, FindErrorCode> find_by_link(const uint64_t col, const std::string& link);
+    const std::map<uint64_t, Collection>& get_collection_caches() const { return collections; }
 private:
     Result<std::vector<Entry>, FindErrorCode> fetch_next_entries(const uint64_t col, int& next_page) const;
 private:

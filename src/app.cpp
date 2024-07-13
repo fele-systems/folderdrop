@@ -80,6 +80,27 @@ Result<void, ExecutionCode> App::run()
     }
 
     std::cout << "Run Stats: created " << stats.created << " / excluded " << stats.excluded << " / skipped " << stats.skipped << std::endl;
+
+    std::ofstream cache_txt{"cache.txt"};
+
+    for (const auto& [cl, cc] : cache.get_collection_caches())
+    {
+        cache_txt << "Cache for collection " << cl << " (stopped at page " << cc.next_page_to_fetch << ")" << std::endl;
+
+        if (cc.entries.empty())
+        {
+            cache_txt << "EMPTY" << std::endl;
+        }
+        else
+        {
+            for (const auto& [url, id] : cc.entries)
+            {
+                cache_txt << "- " << std::to_string(id) << " | " << url << std::endl;
+            }
+        }
+        
+    }
+
     return outcome::success();
 }
 
