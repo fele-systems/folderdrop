@@ -125,6 +125,8 @@ Result<RunStats, ExecutionCode> App::execute_mount(const AppMount& appMount)
         
         if (is_error(find_result, FindErrorCode::no_such_raindrop) )
         {
+            if (VERBOSE)
+                std::cout << "Will create " << compiled_link << std::endl;
             if (auto r = queue.append(RaindropBuilder{ compiled_link }.set_title(file)); r.has_value())
             {
                 stats.created += (*r)["items"].size();
