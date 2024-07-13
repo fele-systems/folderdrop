@@ -8,6 +8,7 @@
 /// @brief User account for raindrop
 struct RaindropAccount
 {
+public:
     static const std::string base_url;
     std::string token;
 };

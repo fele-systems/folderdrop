@@ -1,11 +1,22 @@
 #include "app.h"
 
 #include <iostream>
-#include <raindrop_queue.h>
-#include <regex>
 
-App::App(int argc, char **argv)
-    : mounts(load_mounts(argc, argv))
+#include <raindrop_queue.h>
+
+using namespace std::string_literals;
+namespace fs = std::filesystem;
+
+bool is_verbose()
+{
+    auto verbose = std::getenv("RD_VERBOSE");
+    return verbose != nullptr && strlen(verbose) > 0;
+}
+
+bool App::VERBOSE = is_verbose();
+
+App::App(Mounts mounts)
+    : mounts(std::move(mounts))
 {
     if (std::getenv("RD_TOKEN") == nullptr)
         throw std::runtime_error{ "Missing RD_TOKEN with the Raindrop API token." };
@@ -13,109 +24,71 @@ App::App(int argc, char **argv)
     account = RaindropAccount{ std::getenv("RD_TOKEN") };
 }
 
-int App::run()
+Result<void, ExecutionCode> App::run()
 {
-    using namespace std::string_literals;
+    std::vector<AppMount> appMounts;
 
     for (const auto& [k, m] : mounts)
     {
-        try
+        std::cout << "Checking mount " << k << std::endl;
+
+        if (!m.collection)
+            return Error{ExecutionCode::malformed_mount_config, "Missing collection for mount " + k};
+
+        const auto collection_name = *m.collection;
+
+        auto optCol = find_collection(account, collection_name);
+        if (!optCol)
         {
-            std::cout << "[INFO] Executing mount " << k << std::endl;
-            execute_mount(m);
+            return Error{ExecutionCode::no_such_collection, collection_name};
         }
-        catch (std::exception& e)
-        {
-            std::cerr << "[ERROR] While processing " << k << ": \n" << e.what() << std::endl;
-            return 1;
+
+        const auto collection = *optCol;
+        const auto collection_id = collection["_id"].get<uint64_t>();
+
+        auto link_prefix = ada::parse<ada::url>(*m.link_prefix);
+        if (!link_prefix) {
+            return Error{ExecutionCode::malformed_mount_config, "The link prefix for mount " + k + " is not a valid URL"};
         }
-    }
-
-    return 0;
-}
-
-Mounts App::load_mounts(int argc, char **argv)
-{
-    const auto mounts_cmd = load_mount_cmd(argc, argv);
-
-    Mounts mounts;
-    
-    if (std::filesystem::exists("config.bs"))
-    {
-        mounts = load_mount_config("config.bs");
-    }
-
-    for (const auto& [key, mount] : mounts_cmd)
-    {
-        auto prev = mounts.find(key);
-
-        if (prev == mounts.end())
-        {
-            mounts.insert_or_assign(key, mount);
-        }
-        else
-        {
-            if (mount.path) prev->second.path = *mount.path;
-            if (mount.collection) prev->second.collection = *mount.collection;
-            if (mount.patterns) prev->second.patterns = *mount.patterns;
-            if (mount.tags) prev->second.tags = *mount.tags;
-            if (mount.link_prefix) prev->second.link_prefix = *mount.link_prefix;
-        }
-    }
-
-    std::cout << "[DEBUG] Checking configs...\n";
-    for (const auto& [k,m] : mounts) {
-        std::cout << k << ": \n\t" << std::to_string(m) << std::endl;
 
         if (!m.path)
-            throw std::runtime_error{ "Missing required option for " + k + ": path" };
-        else if (!m.collection)
-            throw std::runtime_error{ "Missing required option for " + k + ": collection" };
-        else if (!m.link_prefix)
-            throw std::runtime_error{ "Missing required option for " + k + ": link_prefix" };
+            return Error{ExecutionCode::malformed_mount_config, "Missing collection for mount " + k};
+
+        auto path = std::filesystem::path{ *m.path };
+
+        auto tags = m.tags.value_or(std::vector<std::string>{});
+
+        std::vector<std::regex> patterns;
+        // Compile regexes
+        for (const auto& pattern : *m.patterns)
+        {
+            patterns.emplace_back(pattern, std::regex::ECMAScript);
+        }
+
+        appMounts.emplace_back(collection_id, std::move(*link_prefix), std::move(path), std::move(tags), std::move(patterns));
     }
 
-    return mounts;
+    for (const auto& appMount : appMounts)
+    {
+        OUTCOME_TRY(execute_mount(appMount));
+    }
+
+
+    return outcome::success();
 }
 
-void App::execute_mount(const Mount &mount)
+Result<void, ExecutionCode> App::execute_mount(const AppMount& appMount)
 {
-    const auto collection_name = *mount.collection;
-    auto optCol = find_collection(account, collection_name);
-    if (!optCol)
-    {
-        std::cerr << "[ERROR] Could not find collection named '" << collection_name << "' in your account!\n"
-            << "Currently only top level (root) collection can be used!" << std::endl;
-        return;
-    }
+    const auto& [col, link_prefix, path, tags, patterns] = appMount;
+    RaindropQueue queue { account, col, tags };
 
-    const auto collection = *optCol;
-    const auto collection_id = collection["_id"].get<uint64_t>();
-    const auto link_prefix = *mount.link_prefix;
-    const auto path = *mount.path;
-    const auto tags = mount.tags.value_or(std::vector<std::string>{});
-
-    RaindropQueue queue { account, collection_id, tags };
-
-    std::vector<std::regex> patterns;
-    // Compile regexes
-    for (const auto& pattern : *mount.patterns)
-    {
-        patterns.emplace_back(pattern, std::regex::ECMAScript);
-    }
-
-    // Get currently existing raindrops
-    const std::vector<Raindrop> raindrops_cache = get_raindrops(account, collection_id);
-
-    std::cout << "[DEBUG] existing raindrops: \n";
-    for (const auto& [url, id] : raindrops_cache)
-        std::cout << '\t' << url << ':' << std::to_string(id) << std::endl;
-
-    for (auto const& dir_entry : std::filesystem::directory_iterator{path})
+    for (auto const& dir_entry :fs::directory_iterator{path})
     {
         if (!dir_entry.is_regular_file())
         {
-            std::cout << "Skipping non-regular file: " << dir_entry.path() << std::endl;
+            if (VERBOSE)
+                std::cout << "Skipping non-regular file: " << dir_entry.path() << std::endl;
+
             continue;
         }
 
@@ -127,36 +100,42 @@ void App::execute_mount(const Mount &mount)
 
         if (match == patterns.end())
         {
-            std::cout << "[INFO] " << file << " not matched against patterns" << std::endl;
+            if (VERBOSE)
+                std::cout << "[INFO] " << file << " not matched against patterns" << std::endl;
+
             continue;
         }
 
         auto link = link_prefix;
-        append_to_url(link, file);
 
-        std::cout << "[DEBUG] expected url: " << link << std::endl;
+        link.set_pathname( (fs::path{ link.get_pathname() } / dir_entry.path().filename()).string() );
 
-        auto existing_rd = std::find_if(raindrops_cache.begin(), raindrops_cache.end(), [&link](auto& rd)
+        const auto compiled_link = link.get_href();
+
+        if (VERBOSE)    
+            std::cout << "[DEBUG] expected url: " << link << std::endl;
+
+        auto find_result = cache.find_by_link(col, compiled_link);
+        
+        if (is_error(find_result, FindErrorCode::no_such_raindrop) )
         {
-            return rd.first == link;
-        });
-
-        if (existing_rd == raindrops_cache.end())
-        {
-            if (auto r = queue.append(RaindropBuilder{ link }.set_title(file)); r.has_value())
+            if (auto r = queue.append(RaindropBuilder{ compiled_link }.set_title(file)); r.has_value())
                 log_created_raindrops(*r);
         }
-        else
+        else if (find_result.has_error())
         {
-            std::cout << "[INFO] Skipping " << file << " because it already exists with id: " << existing_rd->second << std::endl;
+            return Error{ExecutionCode::generic, find_result.error().to_string()};
         }
+        
+        if (VERBOSE)
+            std::cout << "[INFO] Skipping " << file << " because it already exists with id: " << find_result.value().second << std::endl;
     }
 
     if (auto r = queue.offload(); r.has_value())
         log_created_raindrops(*r);
 
 
-    return;
+    return outcome::success();
 }
 
 std::vector<Raindrop> get_raindrops(const RaindropAccount &raindropio, uint64_t collection_id)
@@ -196,30 +175,4 @@ void log_created_raindrops(const nlohmann::json &r)
         std::cout << "\t- " << std::to_string(id) << '\n';
     }
     std::cout.flush();
-}
-
-void append_to_url(std::string &url, std::string_view append)
-{
-    if (append.empty() || url.empty()) return;
-
-    if (append[0] == '/')
-        append = append.substr(1);
-
-    if (url.back() != '/')
-        url.push_back('/');
-
-    for (const char ch : append)
-    {
-        if (ch >= ' ' && ch <= ',')
-        {
-            url.push_back('%');
-            std::array<char, 64> buffer;            
-            size_t written = snprintf(buffer.data(), buffer.size(), "%x", static_cast<uint32_t>(ch));
-            url.append(buffer.data(), written);
-        }
-        else
-        {
-            url.push_back(ch);
-        }
-    }
 }

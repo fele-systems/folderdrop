@@ -1,19 +1,38 @@
 #pragma once
 
+#include <regex>
+
+#include <ada.h>
+
 #include <raindrop.h>
+#include <raindrop_cache.h>
+
 #include <mounts.h>
+
+enum class ExecutionCode
+{
+    malformed_mount_config = 1,
+    no_such_collection,
+    generic
+};
+
+
+
+using AppMount = std::tuple<uint64_t, ada::url, std::filesystem::path, std::vector<std::string>, std::vector<std::regex>>;
 
 class App
 {
 public:
-    App(int argc, char** argv);
-    int run();
+    App(Mounts mounts);
+    Result<void, ExecutionCode> run();
 private:
-    static Mounts load_mounts(int argc, char** argv);
-    void execute_mount(const Mount& mount);
+    Result<void, ExecutionCode> execute_mount(const AppMount& appMount);
+public:
+    static bool VERBOSE;
 private:
     Mounts mounts;
     RaindropAccount account;
+    RaindropCache cache {account, 100};
 };
 
 using Raindrop = std::pair<std::string, uint64_t>;
@@ -28,5 +47,3 @@ std::vector<Raindrop> get_raindrops(
 
 
 void log_created_raindrops(const nlohmann::json &r);
-
-void append_to_url(std::string& url, std::string_view append);
