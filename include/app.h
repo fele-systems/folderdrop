@@ -16,7 +16,15 @@ enum class ExecutionCode
     generic
 };
 
-
+struct RunStats
+{
+    /** Number of created raindrops */
+    int created;
+    /** Number of files skipped because already existed in collection */
+    int skipped;
+    /** Total number of files excluded by pattern */
+    int excluded;
+};
 
 using AppMount = std::tuple<uint64_t, ada::url, std::filesystem::path, std::vector<std::string>, std::vector<std::regex>>;
 
@@ -26,7 +34,7 @@ public:
     App(Mounts mounts);
     Result<void, ExecutionCode> run();
 private:
-    Result<void, ExecutionCode> execute_mount(const AppMount& appMount);
+    Result<RunStats, ExecutionCode> execute_mount(const AppMount& appMount);
 public:
     static bool VERBOSE;
 private:

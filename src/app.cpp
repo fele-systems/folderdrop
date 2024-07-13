@@ -68,19 +68,26 @@ Result<void, ExecutionCode> App::run()
         appMounts.emplace_back(collection_id, std::move(*link_prefix), std::move(path), std::move(tags), std::move(patterns));
     }
 
+    RunStats stats{ 0, 0, 0 };
     for (const auto& appMount : appMounts)
     {
-        OUTCOME_TRY(execute_mount(appMount));
+        OUTCOME_TRY(auto stat, execute_mount(appMount));
+        stats.created += stat.created;
+        stats.excluded += stat.excluded;
+        stats.skipped += stat.skipped;
+
+        std::cout << "Mount Stats: created " << stat.created << " / excluded " << stat.excluded << " / skipped " << stat.skipped << std::endl;
     }
 
-
+    std::cout << "Run Stats: created " << stats.created << " / excluded " << stats.excluded << " / skipped " << stats.skipped << std::endl;
     return outcome::success();
 }
 
-Result<void, ExecutionCode> App::execute_mount(const AppMount& appMount)
+Result<RunStats, ExecutionCode> App::execute_mount(const AppMount& appMount)
 {
     const auto& [col, link_prefix, path, tags, patterns] = appMount;
     RaindropQueue queue { account, col, tags };
+    RunStats stats{ 0, 0, 0 };
 
     for (auto const& dir_entry :fs::directory_iterator{path})
     {
@@ -89,6 +96,7 @@ Result<void, ExecutionCode> App::execute_mount(const AppMount& appMount)
             if (VERBOSE)
                 std::cout << "Skipping non-regular file: " << dir_entry.path() << std::endl;
 
+            stats.excluded++;
             continue;
         }
 
@@ -103,6 +111,7 @@ Result<void, ExecutionCode> App::execute_mount(const AppMount& appMount)
             if (VERBOSE)
                 std::cout << "[INFO] " << file << " not matched against patterns" << std::endl;
 
+            stats.excluded++;
             continue;
         }
 
@@ -112,30 +121,37 @@ Result<void, ExecutionCode> App::execute_mount(const AppMount& appMount)
 
         const auto compiled_link = link.get_href();
 
-        if (VERBOSE)    
-            std::cout << "[DEBUG] expected url: " << link << std::endl;
-
         auto find_result = cache.find_by_link(col, compiled_link);
         
         if (is_error(find_result, FindErrorCode::no_such_raindrop) )
         {
             if (auto r = queue.append(RaindropBuilder{ compiled_link }.set_title(file)); r.has_value())
+            {
+                stats.created += (*r)["items"].size();
                 log_created_raindrops(*r);
+            }
         }
         else if (find_result.has_error())
         {
             return Error{ExecutionCode::generic, find_result.error().to_string()};
         }
-        
-        if (VERBOSE)
-            std::cout << "[INFO] Skipping " << file << " because it already exists with id: " << find_result.value().second << std::endl;
+        else
+        {
+            if (VERBOSE)
+                std::cout << "[INFO] Skipping " << file << " because it already exists with id: " << find_result.value().second << std::endl;
+
+            stats.skipped++;
+        }
     }
 
     if (auto r = queue.offload(); r.has_value())
+    {
+        stats.created += (*r)["items"].size();
         log_created_raindrops(*r);
+    }
 
 
-    return outcome::success();
+    return stats;
 }
 
 std::vector<Raindrop> get_raindrops(const RaindropAccount &raindropio, uint64_t collection_id)
