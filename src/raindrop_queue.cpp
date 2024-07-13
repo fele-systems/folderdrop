@@ -1,5 +1,7 @@
 #include <raindrop_queue.h>
 
+#include <iostream>
+
 RaindropQueue::RaindropQueue(const RaindropAccount& account, uint64_t collection_id, std::vector<std::string> tags)
     : account(account),
     collection_id(collection_id),
@@ -45,6 +47,13 @@ std::optional<nlohmann::json> RaindropQueue::offload()
     if (payload.contains("items") && !payload["items"].empty())
     {
         auto response = create_raindrops(account, payload);
+
+        if (response["items"].size() != payload["items"].size())
+        {
+            std::cerr << "[WARNING] Expected " << payload["items"].size() << " raindrops to be created, but only " << response["items"].size() << " came.\n"
+                << "Response: <<EOF\n" << response.dump() << "\nEOF" << std::endl;
+        }
+
         init_payload();
         return response;
     }
