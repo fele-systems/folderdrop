@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include <app.h>
+
 RaindropQueue::RaindropQueue(const RaindropAccount& account, uint64_t collection_id, std::vector<std::string> tags)
     : account(account),
     collection_id(collection_id),
@@ -46,12 +48,27 @@ std::optional<nlohmann::json> RaindropQueue::offload()
 {
     if (payload.contains("items") && !payload["items"].empty())
     {
+        if (App::VERBOSE)
+        {
+            std::cout << "[DEBUG] <<<<<<<<<< offload " << payload["items"].size() << " raindrops \n"
+                << "---------- request ----------" << std::endl;
+            std::cout << payload.dump(2) << std::endl;
+        }
+
         auto response = create_raindrops(account, payload);
 
         if (response["items"].size() != payload["items"].size())
         {
             std::cerr << "[WARNING] Expected " << payload["items"].size() << " raindrops to be created, but only " << response["items"].size() << " came.\n"
                 << "Response: <<EOF\n" << response.dump() << "\nEOF" << std::endl;
+        }
+
+        if (App::VERBOSE)
+        {
+            std::cout << "---------- response ----------" << std::endl;
+            std::cout << response.dump(2) << std::endl;
+
+            std::cout << "[DEBUG] >>>>>>>>>>" << std::endl;
         }
 
         init_payload();
