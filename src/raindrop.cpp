@@ -1,5 +1,7 @@
 #include <raindrop.h>
 
+#include <fmt/core.h>
+
 const std::string RaindropAccount::base_url = "https://api.raindrop.io";
 
 RaindropBuilder::RaindropBuilder(const std::string &url)
@@ -92,9 +94,8 @@ std::optional<nlohmann::json> find_collection(const RaindropAccount& raindrop, c
 
     if (r.status_code != 200)
     {
-        throw std::runtime_error{ "Error creating a raindrop: " + r.text };
+        throw std::runtime_error{ "Error trying to find collection: " + r.text };
     }
-
     auto response = nlohmann::json::parse(r.text);
 
     return find_collection_in_response(response, collection_name);
@@ -109,7 +110,7 @@ std::optional<nlohmann::json> find_collection_in_response(nlohmann::json &respon
     });
 
     if (itr == items.end())
-        return {};
+        return std::nullopt;
     else
         return *itr;
 }

@@ -42,9 +42,20 @@ std::vector<std::string> parse_css(std::string css)
     // Parse the last one
     lr_trim(s);
     if (!s.empty())
-        vec.push_back(s);   
+        vec.push_back(s);
 
     return vec;
+}
+
+/// @brief Tests if the given arg corresponds to any of the option's forms
+/// @param arg Value from argv
+/// @param short_opt The short option format
+/// @param long_opt The long option format
+/// @return 
+inline bool test_option(std::string_view arg, const char* short_opt, const char* long_opt)
+{
+    // TODO:LOW Also accept the "long option with equals" form (--config-file=<file>)
+    return arg == short_opt || arg == long_opt;
 }
 
 __attribute__((noreturn)) void fail_no_mount_defined(std::string_view option)
@@ -62,139 +73,79 @@ std::string missing_value(std::string_view option, std::string_view mount)
     return "Missing value for "s + option + " while building mount " + mount;
 }
 
-Result<Mounts, LoadMountErrorCode> load_mounts(int argc, char **argv)
+Result<std::string, LoadMountErrorCode> consume_option_value(const std::vector<std::string>& args, std::vector<std::string>::iterator& current)
 {
-    OUTCOME_TRY(const auto mounts_cmd, load_mount_cmd(argc, argv));
-
-    Mounts mounts;
-    
-    if (std::filesystem::exists("config.bs"))
-    {
-        OUTCOME_TRY(mounts, load_mount_config("config.bs"));
-    }
-
-    for (const auto& [key, mount] : mounts_cmd)
-    {
-        auto prev = mounts.find(key);
-
-        if (prev == mounts.end())
-        {
-            mounts.insert_or_assign(key, mount);
-        }
-        else
-        {
-            if (mount.path) prev->second.path = *mount.path;
-            if (mount.collection) prev->second.collection = *mount.collection;
-            if (mount.patterns) prev->second.patterns = *mount.patterns;
-            if (mount.tags) prev->second.tags = *mount.tags;
-            if (mount.link_prefix) prev->second.link_prefix = *mount.link_prefix;
-        }
-    }
-
-    std::cout << "[DEBUG] Checking configs...\n";
-    for (const auto& [k,m] : mounts) {
-        std::cout << k << ": \n\t" << std::to_string(m) << std::endl;
-
-        if (!m.path)
-            throw std::runtime_error{ "Missing required option for " + k + ": path" };
-        else if (!m.collection)
-            throw std::runtime_error{ "Missing required option for " + k + ": collection" };
-        else if (!m.link_prefix)
-            throw std::runtime_error{ "Missing required option for " + k + ": link_prefix" };
-    }
-
-    return mounts;
-}
-
-Result<std::string, LoadMountErrorCode> get_option_value(const std::vector<std::string>& args, std::vector<std::string>::iterator current)
-{
-    if (auto next = current + 1; next == args.end())
+    if (current + 1 == args.end())
     {
         return Error{LoadMountErrorCode::missing_value, *current};
     }
     else
     {
-        return *next;
+        return *(++current);
     }
 }
 
-Result<Mounts, LoadMountErrorCode> load_mount_cmd(int argc, char** argv)
+Result<std::string, LoadMountErrorCode> consume_option_value(std::vector<std::string>::iterator& current, std::vector<std::string>::iterator end)
 {
-    std::vector<std::string> args;
-    // Skip arg[0], which is executable path
-    std::transform(&argv[1], &argv[argc], std::back_inserter(args), [](const char* arg)
+    if (current + 1 == end)
     {
-        return std::string{arg};
-    });
+        return Error{LoadMountErrorCode::missing_value, *current};
+    }
+    else
+    {
+        return *(++current);
+    }
+}
 
+Result<Mounts, LoadMountErrorCode> load_mount_cmd(std::vector<std::string>::iterator arg_itr, std::vector<std::string>::iterator end)
+{
     Mounts mounts;
     auto mount = mounts.end();
 
-    auto arg = args.begin(); 
-    const auto end = args.end();
-
-    while (arg != end)
+    while (arg_itr != end)
     {
-        if (const auto& a = *arg; a == "-m" || a == "--mount")
+        if (const auto& a = *arg_itr; a == "-m" || a == "--mount")
         {
-
-            OUTCOME_TRY(auto mount_name, get_option_value(args, arg));
-
+            OUTCOME_TRY(auto mount_name, consume_option_value(arg_itr, end));
             bool inserted = false;
             std::tie(mount, inserted) = mounts.try_emplace(mount_name);
-
             if (!inserted)
                 return Error{LoadMountErrorCode::duplicate_mount, mount_name};
-                
-            mount->second.patterns = {"*"};
-            ++arg; // Skip the processed value
+            mount->second.patterns = {".*"};
         }
         else if (a == "-p" || a == "--path")
         {
             if (mount == mounts.end()) Error{LoadMountErrorCode::option_missing_mount, a};
-            
-            OUTCOME_TRY(mount->second.path, get_option_value(args, arg));
-
-            ++arg; // Skip the processed value
+            OUTCOME_TRY(mount->second.path, consume_option_value(arg_itr, end));
         }
         else if (a == "-P" || a == "--patterns")
         {
-            if (mount == mounts.end()) fail_no_mount_defined(a);
-            if (arg + 1 == end) fail_missing_value(a, mount->first);
-
-            mount->second.patterns = parse_css(*(arg + 1));
-            ++arg; // Skip the processed value
+            if (mount == mounts.end()) Error{LoadMountErrorCode::option_missing_mount, a};
+            OUTCOME_TRY(auto arg_value, consume_option_value(arg_itr, end));
+            mount->second.patterns = parse_css(arg_value);
         }
         else if (a == "-t" || a == "--tags")
         {
-            if (mount == mounts.end()) fail_no_mount_defined(a);
-            if (arg + 1 == end) fail_missing_value(a, mount->first);
-
-            mount->second.tags = parse_css(*(arg + 1));
-            ++arg; // Skip the processed value
+            if (mount == mounts.end()) Error{LoadMountErrorCode::option_missing_mount, a};
+            OUTCOME_TRY(auto arg_value, consume_option_value(arg_itr, end));
+            mount->second.tags = parse_css(arg_value);
         }
         else if (a == "-c" || a == "--collection")
         {
-            if (mount == mounts.end()) fail_no_mount_defined(a);
-            if (arg + 1 == end) fail_missing_value(a, mount->first);
-
-            mount->second.collection = *(arg + 1);
-            ++arg; // Skip the processed value
+            if (mount == mounts.end()) Error{LoadMountErrorCode::option_missing_mount, a};
+            OUTCOME_TRY(mount->second.collection, consume_option_value(arg_itr, end));
         }
         else if (a == "-l" || a == "--link-prefix")
         {
-            if (mount == mounts.end()) fail_no_mount_defined(a);
-            if (arg + 1 == end) fail_missing_value(a, mount->first);
-
-            mount->second.link_prefix = *(arg + 1);
-            ++arg; // Skip the processed value
+            if (mount == mounts.end()) Error{LoadMountErrorCode::option_missing_mount, a};
+            OUTCOME_TRY(mount->second.link_prefix, consume_option_value(arg_itr, end));
         }
         else
         {
-            throw std::runtime_error{ "Unknown option: " + a };
+            return Error{LoadMountErrorCode::unknown_option, a};
         }
 
-        ++arg;
+        ++arg_itr;
     }
 
     return mounts;
@@ -276,4 +227,83 @@ std::string std::to_string(const Mount &mount)
         + "; tags=" + (mount.tags ? join(*mount.tags) : "empty")
         + "; patterns=" + (mount.patterns ? join(*mount.patterns) : "empty")
         + "; collection=" + opt_to_string(mount.collection) + "}";
+}
+
+
+
+Result<Config, LoadMountErrorCode> Config::load_config(int argc, char **argv)
+{
+    std::vector<std::string> args;
+    // Skip arg[0], which is executable path
+    std::transform(&argv[1], &argv[argc], std::back_inserter(args), [](const char* arg) { return std::string{arg}; });
+
+    Config config;
+
+    auto arg_itr = args.begin();
+    const auto end = args.end();
+    std::string config_filename;
+
+    // First, parse common options
+    while (arg_itr != end)
+    {
+        if (const auto& a = *arg_itr; test_option(a, "-v", "--verbose"))
+        {
+            config.is_verbose = true;
+        }
+        else if (test_option(a, "-h", "--help"))
+        {
+            config.show_help = true;
+            // If help is called, stop processing any further
+            return config;
+        }
+        else if (test_option(a, "-C", "--config-file"))
+        {
+            OUTCOME_TRY(config_filename, consume_option_value(args, arg_itr));
+        }
+        else if (test_option(a, "-d", "--dry-run"))
+        {
+            config.dry_run = true;
+        }
+        else if (test_option(a, "-m", "--mount"))
+        {
+            // When we hit the first -m, stop immediately to
+            // avoid returning the error bellow!
+            break;
+        }
+        else
+        {
+            return Error{LoadMountErrorCode::unknown_option, a};
+        }
+
+        ++arg_itr;
+    }
+
+    // Second, parse the mound definitions from command line and then from config file (is specified)
+    OUTCOME_TRY(const auto mounts_cmd, load_mount_cmd(arg_itr, end));
+
+    if (!config_filename.empty())
+    {
+        OUTCOME_TRY(config.mounts, load_mount_config(config_filename));
+    }
+
+    // Third, merge the mounts from cmd and config
+    for (const auto& [key, mount] : mounts_cmd)
+    {
+        auto prev = config.mounts.find(key);
+
+        if (prev == config.mounts.end())
+        {
+            config.mounts.insert_or_assign(key, mount);
+        }
+        else
+        {
+            if (mount.path) prev->second.path = *mount.path;
+            if (mount.collection) prev->second.collection = *mount.collection;
+            if (mount.patterns) prev->second.patterns = *mount.patterns;
+            if (mount.tags) prev->second.tags = *mount.tags;
+            if (mount.link_prefix) prev->second.link_prefix = *mount.link_prefix;
+        }
+    }
+
+    return config;
 }

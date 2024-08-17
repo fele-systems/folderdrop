@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include <fmt/color.h>
+
 #include <raindrop_queue.h>
 
 using namespace std::string_literals;
@@ -15,58 +17,17 @@ bool is_verbose()
 
 bool App::VERBOSE = is_verbose();
 
-App::App(Mounts mounts)
-    : mounts(std::move(mounts))
+App::App(Config config)
+    : config(std::move(config))
 {
-    if (std::getenv("RD_TOKEN") == nullptr)
-        throw std::runtime_error{ "Missing RD_TOKEN with the Raindrop API token." };
-        
-    account = RaindropAccount{ std::getenv("RD_TOKEN") };
+    auto rd_token = std::getenv("RD_TOKEN");
+    if (rd_token != nullptr)
+        account = RaindropAccount{ rd_token };
 }
 
 Result<void, ExecutionCode> App::run()
 {
-    std::vector<AppMount> appMounts;
-
-    for (const auto& [k, m] : mounts)
-    {
-        std::cout << "Checking mount " << k << std::endl;
-
-        if (!m.collection)
-            return Error{ExecutionCode::malformed_mount_config, "Missing collection for mount " + k};
-
-        const auto collection_name = *m.collection;
-
-        auto optCol = find_collection(account, collection_name);
-        if (!optCol)
-        {
-            return Error{ExecutionCode::no_such_collection, collection_name};
-        }
-
-        const auto collection = *optCol;
-        const auto collection_id = collection["_id"].get<uint64_t>();
-
-        auto link_prefix = ada::parse<ada::url>(*m.link_prefix);
-        if (!link_prefix) {
-            return Error{ExecutionCode::malformed_mount_config, "The link prefix for mount " + k + " is not a valid URL"};
-        }
-
-        if (!m.path)
-            return Error{ExecutionCode::malformed_mount_config, "Missing collection for mount " + k};
-
-        auto path = std::filesystem::path{ *m.path };
-
-        auto tags = m.tags.value_or(std::vector<std::string>{});
-
-        std::vector<std::regex> patterns;
-        // Compile regexes
-        for (const auto& pattern : *m.patterns)
-        {
-            patterns.emplace_back(pattern, std::regex::ECMAScript);
-        }
-
-        appMounts.emplace_back(collection_id, std::move(*link_prefix), std::move(path), std::move(tags), std::move(patterns));
-    }
+    OUTCOME_TRY(std::vector<AppMount> appMounts, check_config());
 
     RunStats stats{ 0, 0, 0 };
     for (const auto& appMount : appMounts)
@@ -175,6 +136,124 @@ Result<RunStats, ExecutionCode> App::execute_mount(const AppMount& appMount)
 
 
     return stats;
+}
+
+Result<std::vector<AppMount>, ExecutionCode> App::check_config() const
+{
+    std::vector<AppMount> appMounts;
+    bool error = false;
+
+    if (!config.dry_run && account.token.empty())
+    {
+        fmt::print(fg(fmt::color::red), "Missing account token. Define it via the RD_TOKEN environment variable\n");
+        error = true;
+    }
+    else if (config.dry_run && account.token.empty())
+    {
+        fmt::println("[{}] Skipping collection validation for dry-run because no token was provied",
+            fmt::styled("WARNING", fg(fmt::color::yellow)));
+    }
+
+    for (const auto& [mount_name, m] : config.mounts)
+    {
+        fmt::println("{}\n\t{}", mount_name, std::to_string(m));
+    }
+
+    for (const auto& [mount_name, m] : config.mounts)
+    {
+        fmt::println("Checking mount {}", fmt::styled(mount_name, fg(fmt::color::alice_blue) | fmt::emphasis::bold));
+        auto result = check_mount(m);
+        // Only build the AppMount when 
+        if (!result.has_error())
+        {
+            appMounts.push_back(result.assume_value());
+            fmt::println("Mount {} is {}!",
+                fmt::styled(mount_name, fg(fmt::color::alice_blue) | fmt::emphasis::bold),
+                fmt::styled("OK", fg(fmt::color::green)));
+        }
+        else
+        {
+            error = true;
+        }
+    }
+
+    if (error)
+        return Error{ExecutionCode::malformed_mount_config, std::string{}};
+    
+    return appMounts;
+}
+
+Result<AppMount, ExecutionCode> App::check_mount(const Mount &mount) const
+{
+    AppMount appMount;
+    bool error = false;
+
+    if (!mount.collection)
+    {
+        fmt::println("[{}] Missing collection", fmt::styled("ERROR", fg(fmt::color::red)));
+        error = true;
+    }
+    else if (!account.token.empty())
+    {
+        const auto collection_name = *mount.collection;
+        auto optCol = find_collection(account, collection_name);
+        if (!optCol)
+        {
+            fmt::println("[{}] No such collection: {}",
+                         fmt::styled("ERROR", fg(fmt::color::red)),
+                         collection_name);
+            error = true;
+        }
+        else
+        {
+            const auto collection = *optCol;
+            appMount.collection_id = collection["_id"].get<uint64_t>();
+        }
+    }
+
+    if (mount.link_prefix)
+    {
+        auto link_prefix = ada::parse<ada::url>(*mount.link_prefix);
+        if (!link_prefix) {
+            fmt::println("[{}] The link prefix '{}' is not a valid URL",
+                         fmt::styled("ERROR", fg(fmt::color::red)),
+                         *mount.link_prefix);
+            error = true;
+            // return Error{ExecutionCode::malformed_mount_config, "The link prefix for mount " + mount_name + " is not a valid URL"};
+        }
+        else
+        {
+            appMount.link_prefix = *link_prefix;
+        }
+    }
+    else
+    {
+        fmt::println("[{}] Missing link prefix", fmt::styled("ERROR", fg(fmt::color::red)));
+    }
+
+    if (!mount.path)
+    {
+        fmt::println("[{}] Missing path", fmt::styled("ERROR", fg(fmt::color::red)));
+        error = true;
+        // return Error{ExecutionCode::malformed_mount_config, "Missing collection for mount " + mount_name};
+    }
+    else
+    {
+        appMount.path = *mount.path;
+    }
+
+    if (mount.tags) appMount.tags = *mount.tags;
+
+    // Compile regexes
+    for (const auto& pattern : mount.patterns.value_or(std::vector<std::string>{}))
+    {
+        appMount.patterns.emplace_back(pattern, std::regex::ECMAScript);
+    }
+
+     if (error)
+        return Error{ExecutionCode::malformed_mount_config, std::string{}};
+    
+    return appMount;
 }
 
 std::vector<Raindrop> get_raindrops(const RaindropAccount &raindropio, uint64_t collection_id)

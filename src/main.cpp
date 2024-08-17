@@ -11,14 +11,14 @@
 
 int main(int argc, char* argv[])
 {
-    auto mounts = load_mounts(argc, argv);
-    if (mounts.has_error())
+    auto config_result = Config::load_config(argc, argv);
+    if (config_result.has_error())
     {
-        std::cerr << mounts.error().to_string() << std::endl;
+        std::cerr << config_result.error().to_string() << std::endl;
         return 1;
     }
 
-    if (auto run = App{mounts.value()}.run(); run.has_error())
+    if (auto run = App{std::move(config_result.value())}.run(); run.has_error())
     {
         if (run.error().ecode == ExecutionCode::no_such_collection)
         {

@@ -26,19 +26,29 @@ struct RunStats
     int excluded;
 };
 
-using AppMount = std::tuple<uint64_t, ada::url, std::filesystem::path, std::vector<std::string>, std::vector<std::regex>>;
+struct AppMount
+{
+    uint64_t collection_id;
+    ada::url link_prefix;
+    std::filesystem::path path;
+    std::vector<std::string> tags;
+    std::vector<std::regex> patterns;
+};
+
 
 class App
 {
 public:
-    App(Mounts mounts);
+    explicit App(Config config);
     Result<void, ExecutionCode> run();
 private:
     Result<RunStats, ExecutionCode> execute_mount(const AppMount& appMount);
 public:
+    Result<std::vector<AppMount>, ExecutionCode> check_config() const;
+    Result<AppMount, ExecutionCode> check_mount(const Mount& mount) const;
     static bool VERBOSE;
 private:
-    Mounts mounts;
+    Config config;
     RaindropAccount account;
     RaindropCache cache {account, 100};
 };
